@@ -322,6 +322,7 @@
       transition: border-color 0.15s, color 0.15s;
     }
     .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-sm.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 
     /* ── Unified search bar ── */
     .search-area {
@@ -566,7 +567,7 @@
       user-select: none;
     }
 
-    .diff-file-header:hover { background: #1e2530; }
+    .diff-file-header:hover { background: var(--border); }
 
     .diff-file-path {
       font-size: 0.8rem;
@@ -704,9 +705,10 @@
       <span class="sidebar-count" id="file-count">0</span>
     </div>
     <div class="sidebar-actions">
-      <button class="btn-sm" onclick="selectAll()">All</button>
-      <button class="btn-sm" onclick="selectNone()">None</button>
+      <button class="btn-sm" id="btn-all" onclick="selectAllVisible()" title="Select all (or all matching filter)">All</button>
+      <button class="btn-sm" id="btn-none" onclick="selectNoneVisible()" title="Deselect all (or all matching filter)">None</button>
       <button class="btn-sm" onclick="invertSelection()">Invert</button>
+      <button class="btn-sm" id="btn-ws" onclick="toggleIgnoreWhitespace()" title="Hide lines that only change whitespace">±ws</button>
     </div>
     <div class="search-area">
       <div class="search-row" id="search-row">
@@ -731,6 +733,7 @@
       <span class="diff-toolbar-label">files ·</span>
       <span class="diff-toolbar-val stat-add" id="toolbar-add">+0</span>
       <span class="diff-toolbar-val stat-del" id="toolbar-del">-0</span>
+      <span class="diff-toolbar-val" id="toolbar-ws-hidden" style="display:none;color:var(--text-dim);font-size:0.7rem"></span>
       <button class="copy-btn" onclick="copyFilteredDiff()">⎘ Copy filtered diff</button>
     </div>
     <div id="diff-output">
@@ -752,6 +755,7 @@ let parsedFiles = []; // [{path, status, addCount, delCount, rawLines[]}]
 let selected = new Set();
 let filterText = '';
 let regexMode = false;
+let ignoreWhitespace = false;
 
 // ── URL normalisation ──────────────────────────────────────────────────────
 function normaliseUrl(raw) {
@@ -938,24 +942,112 @@ function toggleFile(path, on) {
   renderDiff();
 }
 
-function selectAll() {
-  parsedFiles.forEach(f => selected.add(f.path));
+function visibleFiles() {
+  const text = regexMode ? filterText : filterText.toLowerCase();
+  const pattern = buildSearchPattern(text);
+  if (!text || !pattern) return parsedFiles;
+  return parsedFiles.filter(f => pattern.test(f.path));
+}
+
+function selectAllVisible() {
+  visibleFiles().forEach(f => selected.add(f.path));
+  updateSelButtons();
   renderSidebar(); renderDiff();
 }
 
-function selectNone() {
-  selected.clear();
+function selectNoneVisible() {
+  visibleFiles().forEach(f => selected.delete(f.path));
+  updateSelButtons();
   renderSidebar(); renderDiff();
 }
+
+// keep old names so nothing else breaks
+function selectAll() { selectAllVisible(); }
+function selectNone() { selectNoneVisible(); }
 
 function invertSelection() {
   parsedFiles.forEach(f => { if (selected.has(f.path)) selected.delete(f.path); else selected.add(f.path); });
+  updateSelButtons();
   renderSidebar(); renderDiff();
+}
+
+function updateSelButtons() {
+  const hasFilter = filterText.trim().length > 0;
+  document.getElementById('btn-all').textContent  = hasFilter ? 'All ✦' : 'All';
+  document.getElementById('btn-none').textContent = hasFilter ? 'None ✦' : 'None';
+  document.getElementById('btn-all').title  = hasFilter ? 'Select all matching files' : 'Select all files';
+  document.getElementById('btn-none').title = hasFilter ? 'Deselect all matching files' : 'Deselect all files';
+}
+
+function toggleIgnoreWhitespace() {
+  ignoreWhitespace = !ignoreWhitespace;
+  const btn = document.getElementById('btn-ws');
+  btn.classList.toggle('active', ignoreWhitespace);
+  btn.title = ignoreWhitespace ? 'Showing: whitespace-only lines hidden' : 'Click to hide whitespace-only lines';
+  renderDiff();
+}
+
+// Returns a Set of indices (into rawLines) that are whitespace-only changes.
+// Strategy: within each hunk, pair up consecutive runs of - and + lines.
+// If a - line and a + line have the same trimmed content, both are whitespace-only.
+// Unpaired deletions/additions of blank lines are also whitespace-only.
+function whitespaceOnlyIndices(rawLines) {
+  const skip = new Set();
+  let i = 0;
+
+  function isDel(l) { return l && l.startsWith('-') && !l.startsWith('---'); }
+  function isAdd(l) { return l && l.startsWith('+') && !l.startsWith('+++'); }
+  function isBlank(l) { return l.slice(1).replace(/[\s\u00a0\u200b]+/g, '') === ''; }
+
+  while (i < rawLines.length) {
+    const line = rawLines[i];
+
+    if (isDel(line) || isAdd(line)) {
+      // Collect del run then add run (standard unified diff order: - before +)
+      const delStart = i;
+      while (i < rawLines.length && isDel(rawLines[i])) i++;
+      const addStart = i;
+      while (i < rawLines.length && isAdd(rawLines[i])) i++;
+      const addEnd = i;
+
+      const dels = rawLines.slice(delStart, addStart);
+      const adds = rawLines.slice(addStart, addEnd);
+      const maxPairs = Math.max(dels.length, adds.length);
+
+      for (let j = 0; j < maxPairs; j++) {
+        const d = j < dels.length ? dels[j] : null;
+        const a = j < adds.length ? adds[j] : null;
+        if (d && a) {
+          // Paired: suppress both if trimmed content is identical (pure whitespace change)
+          if (d.slice(1).trim().replace(/\s+/g, ' ') === a.slice(1).trim().replace(/\s+/g, ' ')) {
+            skip.add(delStart + j);
+            skip.add(addStart + j);
+          }
+        } else if (d) {
+          // Unpaired deletion: suppress if blank
+          if (isBlank(d)) skip.add(delStart + j);
+        } else if (a) {
+          // Unpaired addition (the case shown in the screenshot): suppress if blank
+          if (isBlank(a)) skip.add(addStart + j);
+        }
+      }
+    } else {
+      i++;
+    }
+  }
+  return skip;
+}
+
+// Strip whitespace-only changed lines from rawLines
+function filterWhitespaceLines(rawLines) {
+  const skip = whitespaceOnlyIndices(rawLines);
+  return rawLines.filter((_, i) => !skip.has(i));
 }
 
 function filterFiles() {
   filterText = document.getElementById('file-filter').value;
   updateSearchMeta();
+  updateSelButtons();
   renderSidebar();
 }
 
@@ -1020,6 +1112,20 @@ function renderDiff() {
   document.getElementById('toolbar-add').textContent = `+${totalAdd}`;
   document.getElementById('toolbar-del').textContent = `-${totalDel}`;
 
+  // Show/hide whitespace-hidden count
+  const wsEl = document.getElementById('toolbar-ws-hidden');
+  if (ignoreWhitespace) {
+    let hiddenCount = 0;
+    shown.forEach(f => {
+      const skip = whitespaceOnlyIndices(f.rawLines);
+      hiddenCount += skip.size;
+    });
+    wsEl.textContent = `· ${hiddenCount} ws line${hiddenCount !== 1 ? 's' : ''} hidden`;
+    wsEl.style.display = '';
+  } else {
+    wsEl.style.display = 'none';
+  }
+
   const frag = document.createDocumentFragment();
   for (const f of shown) {
     frag.appendChild(buildFileBlock(f));
@@ -1047,7 +1153,8 @@ function buildFileBlock(f) {
   let oldLine = 0, newLine = 0;
   let inHeader = true; // skip the git diff header preamble
 
-  for (const raw of f.rawLines) {
+  const linesToRender = ignoreWhitespace ? filterWhitespaceLines(f.rawLines) : f.rawLines;
+  for (const raw of linesToRender) {
     if (raw.startsWith('@@ ')) {
       inHeader = false;
       const m = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)/);
@@ -1090,7 +1197,10 @@ function pathHtml(path) {
 // ── Copy filtered diff ─────────────────────────────────────────────────────
 function copyFilteredDiff() {
   const shown = parsedFiles.filter(f => selected.has(f.path));
-  const text = shown.map(f => f.rawLines.join('\n')).join('\n');
+  const text = shown.map(f => {
+    const lines = ignoreWhitespace ? filterWhitespaceLines(f.rawLines) : f.rawLines;
+    return lines.join('\n');
+  }).join('\n');
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.querySelector('.copy-btn');
     btn.textContent = '✓ Copied!';
