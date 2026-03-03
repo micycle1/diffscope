@@ -29,6 +29,26 @@
       --serif: 'Instrument Serif', Georgia, serif;
     }
 
+    :root.light {
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --surface2: #f1f3f5;
+      --border: #e2e6ea;
+      --border2: #ced4da;
+      --accent: #16a34a;
+      --accent2: #15803d;
+      --accent-dim: #dcfce7;
+      --del: #dc2626;
+      --del-bg: #fee2e2;
+      --add: #16a34a;
+      --add-bg: #dcfce7;
+      --neutral: #495057;
+      --text: #1a1d23;
+      --text-dim: #6c757d;
+      --hunk: #0284c7;
+      --hunk-bg: #e0f2fe;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     html { font-size: 14px; }
@@ -85,6 +105,25 @@
       font-size: 0.72rem;
       color: var(--text-dim);
     }
+
+    /* ── Theme toggle ── */
+    .theme-toggle {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+    .theme-icon { font-size: 0.9rem; }
 
     /* ── Input Section ── */
     .input-section {
@@ -279,6 +318,86 @@
     }
     .filter-input:focus { border-color: var(--accent); }
     .filter-input::placeholder { color: var(--text-dim); }
+
+    /* ── Glob / pattern filter ── */
+    .glob-area {
+      padding: 6px 12px 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .glob-row {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .glob-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 5px 9px;
+      border-radius: 4px;
+      outline: none;
+      min-width: 0;
+      transition: border-color 0.15s;
+    }
+    .glob-input:focus { border-color: var(--accent); }
+    .glob-input::placeholder { color: var(--text-dim); }
+    .glob-input.invalid { border-color: var(--del); }
+
+    .glob-mode-btn {
+      font-size: 0.62rem;
+      padding: 4px 7px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text-dim);
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--mono);
+      letter-spacing: 0.04em;
+      transition: all 0.12s;
+      white-space: nowrap;
+    }
+    .glob-mode-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .glob-mode-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .glob-apply-btn {
+      font-size: 0.68rem;
+      padding: 4px 10px;
+      background: var(--accent);
+      border: none;
+      color: #000;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-weight: 700;
+      transition: background 0.12s;
+      white-space: nowrap;
+    }
+    .glob-apply-btn:hover { background: var(--accent2); }
+
+    .glob-hint {
+      font-size: 0.64rem;
+      color: var(--text-dim);
+      line-height: 1.4;
+    }
+    .glob-hint code {
+      background: var(--surface2);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-family: var(--mono);
+    }
+
+    .glob-match-count {
+      font-size: 0.65rem;
+      color: var(--accent);
+    }
 
     #file-list {
       flex: 1;
@@ -538,6 +657,10 @@
   </div>
   <div class="header-spacer"></div>
   <span class="header-hint">Filter any GitHub compare diff by file</span>
+  <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn" title="Toggle light/dark theme">
+    <span class="theme-icon" id="theme-icon">☀️</span>
+    <span id="theme-label">Light</span>
+  </button>
 </header>
 
 <div class="input-section">
@@ -577,7 +700,19 @@
       <button class="btn-sm" onclick="selectNone()">None</button>
       <button class="btn-sm" onclick="invertSelection()">Invert</button>
     </div>
-    <input class="filter-input" id="file-filter" placeholder="Filter filenames…" oninput="filterFiles()" />
+    <input class="filter-input" id="file-filter" placeholder="Search filenames…" oninput="filterFiles()" />
+    <!-- Glob / Regex pattern filter -->
+    <div class="glob-area">
+      <div class="glob-row">
+        <input class="glob-input" id="glob-input" placeholder="e.g. src/**/*.cpp or /\.h$/" spellcheck="false" autocomplete="off" />
+        <button class="glob-mode-btn" id="glob-sel-btn" onclick="applyGlobSelect()" title="Select matched files">Select</button>
+        <button class="glob-mode-btn" id="glob-desel-btn" onclick="applyGlobDeselect()" title="Deselect matched files">Deselect</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="glob-hint">Glob: <code>*.cpp</code> <code>src/**</code> &nbsp; Regex: <code>/pattern/</code></span>
+        <span class="glob-match-count" id="glob-match-count"></span>
+      </div>
+    </div>
     <div id="file-list"></div>
   </aside>
 
@@ -915,10 +1050,162 @@ function escHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// ── Enter key on input ─────────────────────────────────────────────────────
+// ── Theme toggle ───────────────────────────────────────────────────────────
+let isDark = true;
+
+function toggleTheme() {
+  isDark = !isDark;
+  document.documentElement.classList.toggle('light', !isDark);
+  document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';
+  document.getElementById('theme-label').textContent = isDark ? 'Light' : 'Dark';
+  try { localStorage.setItem('diffscope-theme', isDark ? 'dark' : 'light'); } catch(e) {}
+}
+
+// Restore saved theme
+(function() {
+  try {
+    const saved = localStorage.getItem('diffscope-theme');
+    if (saved === 'light') {
+      isDark = false;
+      document.documentElement.classList.add('light');
+      document.getElementById('theme-icon').textContent = '🌙';
+      document.getElementById('theme-label').textContent = 'Dark';
+    }
+  } catch(e) {}
+})();
+
+// ── Glob / Regex helpers ───────────────────────────────────────────────────
+
+// Convert a glob pattern to a RegExp.
+// Supports: * (any chars except /), ** (any chars including /), ? (single char), {a,b} alternatives
+function globToRegex(pattern) {
+  // Escape special regex chars except our glob chars
+  let src = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === '*' && pattern[i+1] === '*') {
+      src += '.*';
+      i += 2;
+      if (pattern[i] === '/') i++; // consume trailing slash after **
+    } else if (c === '*') {
+      src += '[^/]*';
+      i++;
+    } else if (c === '?') {
+      src += '[^/]';
+      i++;
+    } else if (c === '{') {
+      // {a,b,c} → (a|b|c)
+      const end = pattern.indexOf('}', i);
+      if (end === -1) { src += escapeRe(c); i++; continue; }
+      const alts = pattern.slice(i+1, end).split(',').map(escapeRe).join('|');
+      src += `(?:${alts})`;
+      i = end + 1;
+    } else {
+      src += escapeRe(c);
+      i++;
+    }
+  }
+  return new RegExp(`^${src}$`, 'i');
+}
+
+function escapeRe(s) {
+  return s.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+}
+
+// Parse user input: /regex/flags → RegExp, else treat as glob
+function parsePattern(raw) {
+  raw = raw.trim();
+  if (!raw) return null;
+  // Regex literal: /pattern/ or /pattern/flags
+  const reMatch = raw.match(/^\/(.+)\/([gimsuy]*)$/);
+  if (reMatch) {
+    return new RegExp(reMatch[1], reMatch[2] || 'i');
+  }
+  // Glob
+  return globToRegex(raw);
+}
+
+function getMatchingPaths(pattern) {
+  if (!pattern) return [];
+  return parsedFiles.filter(f => pattern.test(f.path)).map(f => f.path);
+}
+
+function applyGlobSelect() {
+  const raw = document.getElementById('glob-input').value;
+  const input = document.getElementById('glob-input');
+  let pattern;
+  try {
+    pattern = parsePattern(raw);
+    input.classList.remove('invalid');
+  } catch(e) {
+    input.classList.add('invalid');
+    return;
+  }
+  if (!pattern) return;
+  const matches = getMatchingPaths(pattern);
+  matches.forEach(p => selected.add(p));
+  showGlobCount(matches.length, 'selected');
+  renderSidebar();
+  renderDiff();
+}
+
+function applyGlobDeselect() {
+  const raw = document.getElementById('glob-input').value;
+  const input = document.getElementById('glob-input');
+  let pattern;
+  try {
+    pattern = parsePattern(raw);
+    input.classList.remove('invalid');
+  } catch(e) {
+    input.classList.add('invalid');
+    return;
+  }
+  if (!pattern) return;
+  const matches = getMatchingPaths(pattern);
+  matches.forEach(p => selected.delete(p));
+  showGlobCount(matches.length, 'deselected');
+  renderSidebar();
+  renderDiff();
+}
+
+function showGlobCount(n, action) {
+  const el = document.getElementById('glob-match-count');
+  el.textContent = `${n} file${n !== 1 ? 's' : ''} ${action}`;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.textContent = '', 3000);
+}
+
+// Live preview: update match count as user types
+document.getElementById('glob-input').addEventListener('input', () => {
+  const raw = document.getElementById('glob-input').value.trim();
+  const el = document.getElementById('glob-match-count');
+  const input = document.getElementById('glob-input');
+  if (!raw || !parsedFiles.length) { el.textContent = ''; input.classList.remove('invalid'); return; }
+  let pattern;
+  try {
+    pattern = parsePattern(raw);
+    input.classList.remove('invalid');
+  } catch(e) {
+    input.classList.add('invalid');
+    el.textContent = 'invalid pattern';
+    return;
+  }
+  const n = getMatchingPaths(pattern).length;
+  el.textContent = `${n} match${n !== 1 ? 'es' : ''}`;
+});
+
+// Enter in glob input → select
+document.getElementById('glob-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') applyGlobSelect();
+});
+
+// ── Enter key on URL input ─────────────────────────────────────────────────
 document.getElementById('url-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') loadDiff();
 });
+
+
 </script>
 </body>
 </html>
