@@ -323,100 +323,88 @@
     }
     .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
 
-    .filter-input {
-      margin: 8px 12px;
+    /* ── Unified search bar ── */
+    .search-area {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .search-row {
+      display: flex;
+      align-items: center;
       background: var(--bg);
       border: 1px solid var(--border2);
+      border-radius: 5px;
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .search-row:focus-within { border-color: var(--accent); }
+    .search-row.invalid { border-color: var(--del); }
+
+    .search-input {
+      flex: 1;
+      background: transparent;
+      border: none;
       color: var(--text);
       font-family: var(--mono);
       font-size: 0.78rem;
       padding: 6px 10px;
-      border-radius: 5px;
-      outline: none;
-      width: calc(100% - 24px);
-    }
-    .filter-input:focus { border-color: var(--accent); }
-    .filter-input::placeholder { color: var(--text-dim); }
-
-    /* ── Glob / pattern filter ── */
-    .glob-area {
-      padding: 6px 12px 8px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-
-    .glob-row {
-      display: flex;
-      gap: 5px;
-      align-items: center;
-    }
-
-    .glob-input {
-      flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--border2);
-      color: var(--text);
-      font-family: var(--mono);
-      font-size: 0.75rem;
-      padding: 5px 9px;
-      border-radius: 4px;
       outline: none;
       min-width: 0;
-      transition: border-color 0.15s;
     }
-    .glob-input:focus { border-color: var(--accent); }
-    .glob-input::placeholder { color: var(--text-dim); }
-    .glob-input.invalid { border-color: var(--del); }
+    .search-input::placeholder { color: var(--text-dim); }
 
-    .glob-mode-btn {
-      font-size: 0.62rem;
-      padding: 4px 7px;
-      background: var(--surface2);
-      border: 1px solid var(--border2);
+    .search-toggle {
+      flex-shrink: 0;
+      padding: 4px 8px;
+      margin: 3px 4px 3px 0;
+      background: transparent;
+      border: 1px solid transparent;
       color: var(--text-dim);
-      border-radius: 4px;
-      cursor: pointer;
       font-family: var(--mono);
+      font-size: 0.68rem;
+      border-radius: 3px;
+      cursor: pointer;
       letter-spacing: 0.04em;
       transition: all 0.12s;
-      white-space: nowrap;
-    }
-    .glob-mode-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-    .glob-mode-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-    .glob-apply-btn {
-      font-size: 0.68rem;
-      padding: 4px 10px;
-      background: var(--accent);
-      border: none;
-      color: #000;
-      border-radius: 4px;
-      cursor: pointer;
-      font-family: var(--mono);
+      user-select: none;
+      font-style: italic;
       font-weight: 700;
-      transition: background 0.12s;
-      white-space: nowrap;
     }
-    .glob-apply-btn:hover { background: var(--accent2); }
+    .search-toggle:hover { color: var(--accent); border-color: var(--border2); }
+    .search-toggle.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
 
-    .glob-hint {
-      font-size: 0.64rem;
-      color: var(--text-dim);
-      line-height: 1.4;
+    .search-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 16px;
+      padding: 0 2px;
     }
-    .glob-hint code {
+
+    .search-hint {
+      font-size: 0.63rem;
+      color: var(--text-dim);
+    }
+    .search-hint code {
       background: var(--surface2);
       padding: 1px 4px;
       border-radius: 3px;
       font-family: var(--mono);
     }
 
-    .glob-match-count {
+    .search-count {
       font-size: 0.65rem;
       color: var(--accent);
     }
+    .search-count.invalid { color: var(--del); }
 
     #file-list {
       flex: 1;
@@ -720,17 +708,14 @@
       <button class="btn-sm" onclick="selectNone()">None</button>
       <button class="btn-sm" onclick="invertSelection()">Invert</button>
     </div>
-    <input class="filter-input" id="file-filter" placeholder="Search filenames…" oninput="filterFiles()" />
-    <!-- Glob / Regex pattern filter -->
-    <div class="glob-area">
-      <div class="glob-row">
-        <input class="glob-input" id="glob-input" placeholder="e.g. src/**/*.cpp or /\.h$/" spellcheck="false" autocomplete="off" />
-        <button class="glob-mode-btn" id="glob-sel-btn" onclick="applyGlobSelect()" title="Select matched files">Select</button>
-        <button class="glob-mode-btn" id="glob-desel-btn" onclick="applyGlobDeselect()" title="Deselect matched files">Deselect</button>
+    <div class="search-area">
+      <div class="search-row" id="search-row">
+        <input class="search-input" id="file-filter" placeholder="Filter files…" spellcheck="false" autocomplete="off" oninput="filterFiles()" />
+        <button class="search-toggle" id="regex-toggle" title="Toggle regex mode" onclick="toggleRegexMode()">.*</button>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <span class="glob-hint">Glob: <code>*.cpp</code> <code>src/**</code> &nbsp; Regex: <code>/pattern/</code></span>
-        <span class="glob-match-count" id="glob-match-count"></span>
+      <div class="search-meta">
+        <span class="search-hint" id="search-hint">Glob: <code>*.cpp</code> <code>src/**</code> <code>*.{h,hpp}</code></span>
+        <span class="search-count" id="search-count"></span>
       </div>
     </div>
     <div id="file-list"></div>
@@ -766,6 +751,7 @@
 let parsedFiles = []; // [{path, status, addCount, delCount, rawLines[]}]
 let selected = new Set();
 let filterText = '';
+let regexMode = false;
 
 // ── URL normalisation ──────────────────────────────────────────────────────
 function normaliseUrl(raw) {
@@ -887,12 +873,17 @@ function showEmptyState(title, sub = '') {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────
 function renderSidebar() {
-  const ft = filterText.toLowerCase();
+  const ft = regexMode ? filterText : filterText.toLowerCase();
   const list = document.getElementById('file-list');
   list.innerHTML = '';
   document.getElementById('file-count').textContent = parsedFiles.length;
 
-  const visible = parsedFiles.filter(f => !ft || f.path.toLowerCase().includes(ft));
+  const pattern = buildSearchPattern(ft);
+  const visible = parsedFiles.filter(f => {
+    if (!ft) return true;
+    if (!pattern) return false;
+    return pattern.test(f.path);
+  });
 
   for (const f of visible) {
     const div = document.createElement('div');
@@ -964,7 +955,49 @@ function invertSelection() {
 
 function filterFiles() {
   filterText = document.getElementById('file-filter').value;
+  updateSearchMeta();
   renderSidebar();
+}
+
+function toggleRegexMode() {
+  regexMode = !regexMode;
+  document.getElementById('regex-toggle').classList.toggle('active', regexMode);
+  document.getElementById('search-hint').innerHTML = regexMode
+    ? 'Regex: <code>\.(h|hpp)$</code> <code>^src/</code>'
+    : 'Glob: <code>*.cpp</code> <code>src/**</code> <code>*.{h,hpp}</code>';
+  filterText = document.getElementById('file-filter').value;
+  updateSearchMeta();
+  renderSidebar();
+}
+
+function buildSearchPattern(text) {
+  if (!text) return null;
+  try {
+    return regexMode ? new RegExp(text, 'i') : globToRegex(text);
+  } catch(e) { return null; }
+}
+
+function updateSearchMeta() {
+  const text = regexMode ? filterText : filterText.toLowerCase();
+  const countEl = document.getElementById('search-count');
+  const rowEl = document.getElementById('search-row');
+  if (!text || !parsedFiles.length) {
+    countEl.textContent = '';
+    countEl.className = 'search-count';
+    rowEl.classList.remove('invalid');
+    return;
+  }
+  const pattern = buildSearchPattern(text);
+  if (!pattern) {
+    countEl.textContent = 'invalid';
+    countEl.className = 'search-count invalid';
+    rowEl.classList.add('invalid');
+    return;
+  }
+  rowEl.classList.remove('invalid');
+  const n = parsedFiles.filter(f => pattern.test(f.path)).length;
+  countEl.textContent = n + ' match' + (n !== 1 ? 'es' : '');
+  countEl.className = 'search-count';
 }
 
 // ── Diff Renderer ──────────────────────────────────────────────────────────
@@ -1094,140 +1127,39 @@ function toggleTheme() {
   } catch(e) {}
 })();
 
-// ── Glob / Regex helpers ───────────────────────────────────────────────────
-
-// Convert a glob pattern to a RegExp.
-// Supports: * (any chars except /), ** (any chars including /), ? (single char), {a,b} alternatives
+// ── Glob helpers ──────────────────────────────────────────────────────────
+// * = within segment, ** = across segments, {a,b} = OR
 function globToRegex(pattern) {
-  // Whether pattern targets a path (contains / or **) or just a filename
   const matchFullPath = pattern.includes('/') || pattern.includes('**');
-
   let src = '';
   let i = 0;
   while (i < pattern.length) {
     const c = pattern[i];
     if (c === '*' && pattern[i+1] === '*') {
-      src += '.*';
-      i += 2;
-      if (pattern[i] === '/') i++; // consume trailing slash after **
+      src += '.*'; i += 2;
+      if (pattern[i] === '/') i++;
     } else if (c === '*') {
-      src += '[^/]*';
-      i++;
+      src += '[^/]*'; i++;
     } else if (c === '?') {
-      src += '[^/]';
-      i++;
+      src += '[^/]'; i++;
     } else if (c === '{') {
-      // {a,b,c} → (?:a|b|c)
       const end = pattern.indexOf('}', i);
       if (end === -1) { src += escapeRe(c); i++; continue; }
       const alts = pattern.slice(i+1, end).split(',').map(s => escapeRe(s.trim())).join('|');
-      src += `(?:${alts})`;
+      src += '(?:' + alts + ')';
       i = end + 1;
     } else {
-      src += escapeRe(c);
-      i++;
+      src += escapeRe(c); i++;
     }
   }
-
-  if (matchFullPath) {
-    // Anchor to start of string, allow paths like "CSharp/Clipper.Engine.cs"
-    return new RegExp(`^${src}$`, 'i');
-  } else {
-    // No slash in pattern: match filename only (last path segment)
-    return new RegExp(`(?:^|/)${src}$`, 'i');
-  }
+  return matchFullPath
+    ? new RegExp('^' + src + '$', 'i')
+    : new RegExp('(?:^|/)' + src + '$', 'i');
 }
 
 function escapeRe(s) {
   return s.replace(/[.+^${}()|[\]\\]/g, '\\$&');
 }
-
-// Parse user input: /regex/flags → RegExp, else treat as glob
-function parsePattern(raw) {
-  raw = raw.trim();
-  if (!raw) return null;
-  // Regex literal: /pattern/ or /pattern/flags
-  const reMatch = raw.match(/^\/(.+)\/([gimsuy]*)$/);
-  if (reMatch) {
-    return new RegExp(reMatch[1], reMatch[2] || 'i');
-  }
-  // Glob
-  return globToRegex(raw);
-}
-
-function getMatchingPaths(pattern) {
-  if (!pattern) return [];
-  return parsedFiles.filter(f => pattern.test(f.path)).map(f => f.path);
-}
-
-function applyGlobSelect() {
-  const raw = document.getElementById('glob-input').value;
-  const input = document.getElementById('glob-input');
-  let pattern;
-  try {
-    pattern = parsePattern(raw);
-    input.classList.remove('invalid');
-  } catch(e) {
-    input.classList.add('invalid');
-    return;
-  }
-  if (!pattern) return;
-  const matches = getMatchingPaths(pattern);
-  matches.forEach(p => selected.add(p));
-  showGlobCount(matches.length, 'selected');
-  renderSidebar();
-  renderDiff();
-}
-
-function applyGlobDeselect() {
-  const raw = document.getElementById('glob-input').value;
-  const input = document.getElementById('glob-input');
-  let pattern;
-  try {
-    pattern = parsePattern(raw);
-    input.classList.remove('invalid');
-  } catch(e) {
-    input.classList.add('invalid');
-    return;
-  }
-  if (!pattern) return;
-  const matches = getMatchingPaths(pattern);
-  matches.forEach(p => selected.delete(p));
-  showGlobCount(matches.length, 'deselected');
-  renderSidebar();
-  renderDiff();
-}
-
-function showGlobCount(n, action) {
-  const el = document.getElementById('glob-match-count');
-  el.textContent = `${n} file${n !== 1 ? 's' : ''} ${action}`;
-  clearTimeout(el._t);
-  el._t = setTimeout(() => el.textContent = '', 3000);
-}
-
-// Live preview: update match count as user types
-document.getElementById('glob-input').addEventListener('input', () => {
-  const raw = document.getElementById('glob-input').value.trim();
-  const el = document.getElementById('glob-match-count');
-  const input = document.getElementById('glob-input');
-  if (!raw || !parsedFiles.length) { el.textContent = ''; input.classList.remove('invalid'); return; }
-  let pattern;
-  try {
-    pattern = parsePattern(raw);
-    input.classList.remove('invalid');
-  } catch(e) {
-    input.classList.add('invalid');
-    el.textContent = 'invalid pattern';
-    return;
-  }
-  const n = getMatchingPaths(pattern).length;
-  el.textContent = `${n} match${n !== 1 ? 'es' : ''}`;
-});
-
-// Enter in glob input → select
-document.getElementById('glob-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') applyGlobSelect();
-});
 
 // ── Enter key on URL input ─────────────────────────────────────────────────
 document.getElementById('url-input').addEventListener('keydown', e => {
