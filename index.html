@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DiffScope — GitHub Diff File Filter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Berkeley+Mono:ital,wght@0,100..700;1,100..700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --surface: #13161b;
+      --surface2: #1a1e25;
+      --border: #232830;
+      --border2: #2e3540;
+      --accent: #4ade80;
+      --accent2: #22c55e;
+      --accent-dim: #16a34a33;
+      --del: #f87171;
+      --del-bg: #7f1d1d18;
+      --add: #4ade80;
+      --add-bg: #14532d18;
+      --neutral: #94a3b8;
+      --text: #e2e8f0;
+      --text-dim: #64748b;
+      --hunk: #38bdf8;
+      --hunk-bg: #0c4a6e18;
+      --mono: 'Berkeley Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --serif: 'Instrument Serif', Georgia, serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { font-size: 14px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .logo-word {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 1.5rem;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+    }
+
+    .logo-tag {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border: 1px solid var(--border2);
+      border-radius: 3px;
+    }
+
+    .header-spacer { flex: 1; }
+
+    .header-hint {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+
+    /* ── Input Section ── */
+    .input-section {
+      padding: 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+      max-width: 960px;
+    }
+
+    .url-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      padding: 10px 14px;
+      border-radius: 6px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .url-input::placeholder { color: var(--text-dim); }
+
+    .url-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+
+    .btn {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: background 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    .btn:hover { background: var(--accent2); }
+    .btn:active { transform: scale(0.97); }
+
+    .btn:disabled {
+      background: var(--border2);
+      color: var(--text-dim);
+      cursor: not-allowed;
+    }
+
+    .example-links {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .example-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .example-chip {
+      font-size: 0.72rem;
+      color: var(--accent);
+      background: var(--accent-dim);
+      border: 1px solid #16a34a55;
+      padding: 3px 9px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.15s;
+      text-decoration: none;
+    }
+
+    .example-chip:hover { background: #16a34a55; }
+
+    /* ── Status Bar ── */
+    #status-bar {
+      padding: 8px 32px;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-ok { color: var(--accent); }
+    .status-err { color: var(--del); }
+
+    .spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--border2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: none;
+    }
+    .spinner.active { display: inline-block; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Layout ── */
+    .workspace {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── File Sidebar ── */
+    #sidebar {
+      width: 280px;
+      min-width: 200px;
+      max-width: 400px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      resize: horizontal;
+    }
+
+    .sidebar-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .sidebar-title {
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .sidebar-count {
+      font-size: 0.7rem;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 1px 7px;
+      border-radius: 10px;
+    }
+
+    .sidebar-actions {
+      display: flex;
+      gap: 6px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .btn-sm {
+      font-size: 0.68rem;
+      padding: 4px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--neutral);
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--mono);
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+    .filter-input {
+      margin: 8px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      padding: 6px 10px;
+      border-radius: 5px;
+      outline: none;
+      width: calc(100% - 24px);
+    }
+    .filter-input:focus { border-color: var(--accent); }
+    .filter-input::placeholder { color: var(--text-dim); }
+
+    #file-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+
+    #file-list::-webkit-scrollbar { width: 4px; }
+    #file-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      cursor: pointer;
+      transition: background 0.1s;
+      user-select: none;
+    }
+
+    .file-item:hover { background: var(--surface2); }
+    .file-item.selected { background: var(--accent-dim); }
+
+    .file-checkbox {
+      width: 13px;
+      height: 13px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .file-badge {
+      flex-shrink: 0;
+      font-size: 0.6rem;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-A { background: var(--add-bg); color: var(--add); border: 1px solid #16a34a44; }
+    .badge-D { background: var(--del-bg); color: var(--del); border: 1px solid #991b1b44; }
+    .badge-M { background: var(--hunk-bg); color: var(--hunk); border: 1px solid #0e7490aa; }
+    .badge-R { background: #78716c18; color: #a8a29e; border: 1px solid #78716c44; }
+
+    .file-name {
+      font-size: 0.75rem;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .file-stats {
+      font-size: 0.65rem;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .stat-add { color: var(--add); }
+    .stat-del { color: var(--del); }
+
+    /* ── Diff Viewer ── */
+    #diff-panel {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .diff-toolbar {
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+      font-size: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .diff-toolbar-label { color: var(--text-dim); }
+    .diff-toolbar-val { color: var(--text); }
+
+    .copy-btn {
+      margin-left: auto;
+      font-size: 0.72rem;
+      padding: 5px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--neutral);
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--mono);
+      transition: all 0.15s;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    #diff-output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.6;
+    }
+
+    #diff-output::-webkit-scrollbar { width: 6px; }
+    #diff-output::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-dim);
+      gap: 12px;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .empty-icon {
+      font-size: 2.5rem;
+      opacity: 0.3;
+    }
+
+    .empty-title {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 1.3rem;
+      color: var(--neutral);
+    }
+
+    .empty-sub {
+      font-size: 0.75rem;
+      max-width: 360px;
+      line-height: 1.7;
+    }
+
+    /* ── Diff Content ── */
+    .diff-file-block {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .diff-file-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .diff-file-header:hover { background: #1e2530; }
+
+    .diff-file-path {
+      font-size: 0.8rem;
+      color: var(--text);
+      flex: 1;
+    }
+
+    .diff-file-path .path-dir { color: var(--text-dim); }
+
+    .collapse-icon {
+      color: var(--text-dim);
+      font-size: 0.7rem;
+      transition: transform 0.2s;
+    }
+    .collapsed .collapse-icon { transform: rotate(-90deg); }
+
+    .diff-lines { }
+    .collapsed .diff-lines { display: none; }
+
+    .diff-line {
+      display: flex;
+      min-width: 0;
+    }
+
+    .diff-line-num {
+      min-width: 44px;
+      padding: 0 8px;
+      color: var(--text-dim);
+      text-align: right;
+      user-select: none;
+      border-right: 1px solid var(--border);
+      font-size: 0.72rem;
+      opacity: 0.5;
+    }
+
+    .diff-line-content {
+      flex: 1;
+      padding: 0 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      min-width: 0;
+    }
+
+    .diff-line.add {
+      background: var(--add-bg);
+    }
+    .diff-line.add .diff-line-content { color: var(--add); }
+    .diff-line.add .diff-line-num { color: var(--add); opacity: 0.6; }
+
+    .diff-line.del {
+      background: var(--del-bg);
+    }
+    .diff-line.del .diff-line-content { color: var(--del); }
+    .diff-line.del .diff-line-num { color: var(--del); opacity: 0.6; }
+
+    .diff-line.hunk {
+      background: var(--hunk-bg);
+    }
+    .diff-line.hunk .diff-line-content { color: var(--hunk); font-style: italic; }
+    .diff-line.hunk .diff-line-num { opacity: 0; }
+
+    .diff-line.ctx .diff-line-num { }
+
+    /* ── Proxy notice ── */
+    .proxy-notice {
+      background: #1c1008;
+      border: 1px solid #92400e44;
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-size: 0.75rem;
+      color: #fbbf24;
+      margin: 16px 32px 0;
+      line-height: 1.7;
+      max-width: 900px;
+    }
+
+    .proxy-notice a { color: #fcd34d; }
+
+    /* Responsive */
+    @media (max-width: 700px) {
+      #sidebar { width: 220px; }
+      .input-row { flex-direction: column; }
+      header { padding: 14px 16px; }
+      .input-section { padding: 16px; }
+      #status-bar { padding: 8px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-word">DiffScope</span>
+    <span class="logo-tag">GitHub Diff Filter</span>
+  </div>
+  <div class="header-spacer"></div>
+  <span class="header-hint">Filter any GitHub compare diff by file</span>
+</header>
+
+<div class="input-section">
+  <div class="input-row">
+    <input
+      class="url-input"
+      id="url-input"
+      type="text"
+      placeholder="https://github.com/owner/repo/compare/v1.0...v2.0.diff  — or — owner/repo/v1.0...v2.0"
+      spellcheck="false"
+      autocomplete="off"
+    />
+    <button class="btn" id="load-btn" onclick="loadDiff()">Load Diff</button>
+  </div>
+  <div class="example-links">
+    <span class="example-label">Examples:</span>
+    <a class="example-chip" href="#" onclick="useExample('https://github.com/AngusJohnson/Clipper2/compare/Clipper2_1.3.0...Clipper2_1.4.0.diff'); return false;">Clipper2 1.3→1.4</a>
+    <a class="example-chip" href="#" onclick="useExample('https://github.com/nicehash/NiceHashQuickMiner/compare/v0.9.1.2...v0.9.2.0.diff'); return false;">NiceHashQuickMiner</a>
+    <a class="example-chip" href="#" onclick="useExample('https://github.com/charmbracelet/bubbletea/compare/v1.2.3...v1.2.4.diff'); return false;">Bubbletea 1.2.3→1.2.4</a>
+  </div>
+</div>
+
+<div id="status-bar">
+  <span class="spinner" id="spinner"></span>
+  <span id="status-msg">Paste a GitHub compare URL above and click Load Diff.</span>
+</div>
+
+<div class="workspace">
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Files Changed</span>
+      <span class="sidebar-count" id="file-count">0</span>
+    </div>
+    <div class="sidebar-actions">
+      <button class="btn-sm" onclick="selectAll()">All</button>
+      <button class="btn-sm" onclick="selectNone()">None</button>
+      <button class="btn-sm" onclick="invertSelection()">Invert</button>
+    </div>
+    <input class="filter-input" id="file-filter" placeholder="Filter filenames…" oninput="filterFiles()" />
+    <div id="file-list"></div>
+  </aside>
+
+  <!-- Diff Panel -->
+  <div id="diff-panel">
+    <div class="diff-toolbar" id="diff-toolbar" style="display:none">
+      <span class="diff-toolbar-label">Showing</span>
+      <span class="diff-toolbar-val" id="toolbar-shown">0</span>
+      <span class="diff-toolbar-label">of</span>
+      <span class="diff-toolbar-val" id="toolbar-total">0</span>
+      <span class="diff-toolbar-label">files ·</span>
+      <span class="diff-toolbar-val stat-add" id="toolbar-add">+0</span>
+      <span class="diff-toolbar-val stat-del" id="toolbar-del">-0</span>
+      <button class="copy-btn" onclick="copyFilteredDiff()">⎘ Copy filtered diff</button>
+    </div>
+    <div id="diff-output">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">⌥</div>
+        <div class="empty-title">No diff loaded yet</div>
+        <div class="empty-sub">
+          Enter a GitHub compare URL ending in <code>.diff</code> above.<br/>
+          Select which files to view using the sidebar.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let parsedFiles = []; // [{path, status, addCount, delCount, rawLines[]}]
+let selected = new Set();
+let filterText = '';
+
+// ── URL normalisation ──────────────────────────────────────────────────────
+function normaliseUrl(raw) {
+  raw = raw.trim();
+  // Already a full URL
+  if (raw.startsWith('http')) {
+    // Ensure it ends in .diff
+    if (!raw.endsWith('.diff')) raw += '.diff';
+    return raw;
+  }
+  // Shorthand: owner/repo/ref1...ref2
+  const m = raw.match(/^([^/]+\/[^/]+)\/(.+)$/);
+  if (m) return `https://github.com/${m[1]}/compare/${m[2]}.diff`;
+  return null;
+}
+
+// ── Example loader ─────────────────────────────────────────────────────────
+function useExample(url) {
+  document.getElementById('url-input').value = url;
+  loadDiff();
+}
+
+// ── Status helpers ─────────────────────────────────────────────────────────
+function setStatus(msg, type = '') {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className = type ? `status-${type}` : '';
+}
+function setLoading(v) {
+  document.getElementById('spinner').classList.toggle('active', v);
+  document.getElementById('load-btn').disabled = v;
+}
+
+// ── Load diff ──────────────────────────────────────────────────────────────
+async function loadDiff() {
+  const raw = document.getElementById('url-input').value;
+  const url = normaliseUrl(raw);
+  if (!url) { setStatus('Invalid URL. Try: https://github.com/owner/repo/compare/v1...v2.diff', 'err'); return; }
+
+  setLoading(true);
+  setStatus(`Fetching ${url} …`);
+  clearUI();
+
+  // We must proxy through a CORS proxy because GitHub does not send
+  // Access-Control-Allow-Origin on .diff responses.
+  const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(url)}`;
+
+  try {
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status} – ${res.statusText}`);
+    const text = await res.text();
+    if (!text || text.trim().length === 0) throw new Error('Empty response — the diff may not exist or the versions are identical.');
+    parseDiff(text);
+    setStatus(`Loaded ${parsedFiles.length} file${parsedFiles.length !== 1 ? 's' : ''} from diff.`, 'ok');
+  } catch(e) {
+    setStatus(`Error: ${e.message}`, 'err');
+    showEmptyState(`Could not load diff — ${e.message}`, 'Check that the URL is a valid GitHub compare link. Verify the refs/tags exist.');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── Parse unified diff ─────────────────────────────────────────────────────
+function parseDiff(text) {
+  const lines = text.split('\n');
+  parsedFiles = [];
+  let current = null;
+  let lineIdx = 0;
+  let oldLine = 0, newLine = 0;
+
+  for (const raw of lines) {
+    if (raw.startsWith('diff --git ')) {
+      if (current) parsedFiles.push(current);
+      // path: b/src/foo.cpp → src/foo.cpp
+      const m = raw.match(/diff --git a\/(.*) b\/(.*)/);
+      const path = m ? m[2] : raw.slice(11);
+      current = { path, status: 'M', addCount: 0, delCount: 0, rawLines: [raw] };
+      oldLine = 0; newLine = 0;
+    } else if (current) {
+      current.rawLines.push(raw);
+      if (raw.startsWith('new file')) { current.status = 'A'; }
+      else if (raw.startsWith('deleted file')) { current.status = 'D'; }
+      else if (raw.startsWith('rename ')) { current.status = 'R'; }
+      else if (raw.startsWith('@@ ')) {
+        const m = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)/);
+        if (m) { oldLine = parseInt(m[1]); newLine = parseInt(m[2]); }
+      } else if (raw.startsWith('+') && !raw.startsWith('+++')) {
+        current.addCount++;
+      } else if (raw.startsWith('-') && !raw.startsWith('---')) {
+        current.delCount++;
+      }
+    }
+  }
+  if (current) parsedFiles.push(current);
+
+  selected = new Set(parsedFiles.map(f => f.path));
+  renderSidebar();
+  renderDiff();
+}
+
+// ── Clear UI ───────────────────────────────────────────────────────────────
+function clearUI() {
+  parsedFiles = [];
+  selected = new Set();
+  document.getElementById('file-list').innerHTML = '';
+  document.getElementById('file-count').textContent = '0';
+  document.getElementById('diff-output').innerHTML = '<div class="empty-state" id="empty-state"><div class="empty-icon">⏳</div><div class="empty-title">Loading…</div></div>';
+  document.getElementById('diff-toolbar').style.display = 'none';
+}
+
+function showEmptyState(title, sub = '') {
+  document.getElementById('diff-output').innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon">⚠</div>
+      <div class="empty-title">${escHtml(title)}</div>
+      ${sub ? `<div class="empty-sub">${escHtml(sub)}</div>` : ''}
+    </div>`;
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const ft = filterText.toLowerCase();
+  const list = document.getElementById('file-list');
+  list.innerHTML = '';
+  document.getElementById('file-count').textContent = parsedFiles.length;
+
+  const visible = parsedFiles.filter(f => !ft || f.path.toLowerCase().includes(ft));
+
+  for (const f of visible) {
+    const div = document.createElement('div');
+    div.className = 'file-item' + (selected.has(f.path) ? ' selected' : '');
+    div.dataset.path = f.path;
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'file-checkbox';
+    cb.checked = selected.has(f.path);
+    cb.addEventListener('change', () => toggleFile(f.path, cb.checked));
+
+    const badge = document.createElement('span');
+    badge.className = `file-badge badge-${f.status}`;
+    badge.textContent = f.status;
+
+    const name = document.createElement('span');
+    name.className = 'file-name';
+    name.title = f.path;
+    // Split dir / filename
+    const slash = f.path.lastIndexOf('/');
+    if (slash >= 0) {
+      name.innerHTML = `<span class="path-dir">${escHtml(f.path.slice(0, slash + 1))}</span>${escHtml(f.path.slice(slash + 1))}`;
+    } else {
+      name.textContent = f.path;
+    }
+
+    const stats = document.createElement('span');
+    stats.className = 'file-stats';
+    if (f.addCount || f.delCount) {
+      stats.innerHTML = `<span class="stat-add">+${f.addCount}</span> <span class="stat-del">-${f.delCount}</span>`;
+    }
+
+    div.appendChild(cb);
+    div.appendChild(badge);
+    div.appendChild(name);
+    div.appendChild(stats);
+
+    div.addEventListener('click', e => {
+      if (e.target === cb) return;
+      cb.checked = !cb.checked;
+      toggleFile(f.path, cb.checked);
+    });
+
+    list.appendChild(div);
+  }
+}
+
+function toggleFile(path, on) {
+  if (on) selected.add(path); else selected.delete(path);
+  renderSidebar();
+  renderDiff();
+}
+
+function selectAll() {
+  parsedFiles.forEach(f => selected.add(f.path));
+  renderSidebar(); renderDiff();
+}
+
+function selectNone() {
+  selected.clear();
+  renderSidebar(); renderDiff();
+}
+
+function invertSelection() {
+  parsedFiles.forEach(f => { if (selected.has(f.path)) selected.delete(f.path); else selected.add(f.path); });
+  renderSidebar(); renderDiff();
+}
+
+function filterFiles() {
+  filterText = document.getElementById('file-filter').value;
+  renderSidebar();
+}
+
+// ── Diff Renderer ──────────────────────────────────────────────────────────
+function renderDiff() {
+  const out = document.getElementById('diff-output');
+  const toolbar = document.getElementById('diff-toolbar');
+  const shown = parsedFiles.filter(f => selected.has(f.path));
+
+  if (shown.length === 0) {
+    out.innerHTML = `<div class="empty-state"><div class="empty-icon">◻</div><div class="empty-title">No files selected</div><div class="empty-sub">Toggle files in the sidebar to view their diffs.</div></div>`;
+    toolbar.style.display = 'none';
+    return;
+  }
+
+  toolbar.style.display = 'flex';
+  let totalAdd = 0, totalDel = 0;
+  shown.forEach(f => { totalAdd += f.addCount; totalDel += f.delCount; });
+  document.getElementById('toolbar-shown').textContent = shown.length;
+  document.getElementById('toolbar-total').textContent = parsedFiles.length;
+  document.getElementById('toolbar-add').textContent = `+${totalAdd}`;
+  document.getElementById('toolbar-del').textContent = `-${totalDel}`;
+
+  const frag = document.createDocumentFragment();
+  for (const f of shown) {
+    frag.appendChild(buildFileBlock(f));
+  }
+  out.innerHTML = '';
+  out.appendChild(frag);
+}
+
+function buildFileBlock(f) {
+  const block = document.createElement('div');
+  block.className = 'diff-file-block';
+
+  const header = document.createElement('div');
+  header.className = 'diff-file-header';
+  header.innerHTML = `
+    <span class="file-badge badge-${f.status}">${f.status}</span>
+    <span class="diff-file-path">${pathHtml(f.path)}</span>
+    <span class="file-stats"><span class="stat-add">+${f.addCount}</span> <span class="stat-del">-${f.delCount}</span></span>
+    <span class="collapse-icon">▾</span>`;
+  header.addEventListener('click', () => { block.classList.toggle('collapsed'); });
+
+  const lines = document.createElement('div');
+  lines.className = 'diff-lines';
+
+  let oldLine = 0, newLine = 0;
+  let inHeader = true; // skip the git diff header preamble
+
+  for (const raw of f.rawLines) {
+    if (raw.startsWith('@@ ')) {
+      inHeader = false;
+      const m = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)/);
+      if (m) { oldLine = parseInt(m[1]); newLine = parseInt(m[2]); }
+      lines.appendChild(makeLine('hunk', '', raw));
+      continue;
+    }
+    if (inHeader) continue;
+
+    if (raw.startsWith('+') && !raw.startsWith('+++')) {
+      lines.appendChild(makeLine('add', newLine++, raw));
+    } else if (raw.startsWith('-') && !raw.startsWith('---')) {
+      lines.appendChild(makeLine('del', oldLine++, raw));
+    } else if (!raw.startsWith('---') && !raw.startsWith('+++') && !raw.startsWith('\\')) {
+      lines.appendChild(makeLine('ctx', `${oldLine++}`, raw));
+      newLine++;
+    }
+  }
+
+  block.appendChild(header);
+  block.appendChild(lines);
+  return block;
+}
+
+function makeLine(cls, lineNum, content) {
+  const row = document.createElement('div');
+  row.className = `diff-line ${cls}`;
+  row.innerHTML = `<span class="diff-line-num">${lineNum}</span><span class="diff-line-content">${escHtml(content)}</span>`;
+  return row;
+}
+
+function pathHtml(path) {
+  const slash = path.lastIndexOf('/');
+  if (slash >= 0) {
+    return `<span class="path-dir">${escHtml(path.slice(0, slash + 1))}</span>${escHtml(path.slice(slash + 1))}`;
+  }
+  return escHtml(path);
+}
+
+// ── Copy filtered diff ─────────────────────────────────────────────────────
+function copyFilteredDiff() {
+  const shown = parsedFiles.filter(f => selected.has(f.path));
+  const text = shown.map(f => f.rawLines.join('\n')).join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = '⎘ Copy filtered diff', 2000);
+  });
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Enter key on input ─────────────────────────────────────────────────────
+document.getElementById('url-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadDiff();
+});
+</script>
+</body>
+</html>
