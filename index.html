@@ -744,41 +744,60 @@ let regexMode = false;
 let ignoreWhitespace = false;
 
 // ── CORS Proxy chain ───────────────────────────────────────────────────────
-// Tried in order; first success wins. Add/remove proxies as services go up/down.
 const CORS_PROXIES = [
-  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-  url => `https://cors-anywhere.herokuapp.com/${url}`,
-  url => `https://thingproxy.freeboard.io/fetch/${url}`,
+  {
+    name: 'corsproxy.io',
+    build: url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    // corsproxy.io requires this header for non-browser fetch to be allowed
+    headers: { 'x-requested-with': 'XMLHttpRequest' },
+  },
+  {
+    name: 'allorigins',
+    build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    headers: {},
+  },
+  {
+    name: 'htmldriven',
+    build: url => `https://cors-proxy.htmldriven.com/?url=${encodeURIComponent(url)}`,
+    headers: {},
+  },
+  {
+    name: 'thingproxy',
+    build: url => `https://thingproxy.freeboard.io/fetch/${url}`,
+    headers: {},
+  },
 ];
 
 async function fetchWithProxyFallback(targetUrl) {
   let lastErr;
   for (let i = 0; i < CORS_PROXIES.length; i++) {
-    const proxyUrl = CORS_PROXIES[i](targetUrl);
-    setStatus(`Trying proxy ${i + 1}/${CORS_PROXIES.length}…`);
+    const proxy = CORS_PROXIES[i];
+    const proxyUrl = proxy.build(targetUrl);
+    setStatus(`Trying proxy ${i + 1}/${CORS_PROXIES.length} (${proxy.name})…`);
+    console.log(`[DiffScope] Trying proxy: ${proxy.name} →`, proxyUrl);
     try {
-      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+      const res = await fetch(proxyUrl, {
+        signal: AbortSignal.timeout(15000),
+        headers: proxy.headers,
+      });
       if (res.ok) {
         const text = await res.text();
-        // allorigins wraps in JSON if you use /get — /raw returns plain text, but
-        // double-check we didn't accidentally get a JSON envelope from another proxy.
+        // allorigins /get wraps in JSON — /raw shouldn't, but guard anyway
         if (text.startsWith('{') && text.includes('"contents"')) {
-          try {
-            const j = JSON.parse(text);
-            if (j.contents) return j.contents;
-          } catch(e) { /* not JSON, fall through */ }
+          try { const j = JSON.parse(text); if (j.contents) return j.contents; } catch(e) {}
         }
         if (!text || text.trim().length === 0) throw new Error('Empty response');
+        console.log(`[DiffScope] Success via ${proxy.name}`);
         return text;
       }
-      lastErr = new Error(`HTTP ${res.status} from proxy ${i + 1}`);
+      lastErr = new Error(`HTTP ${res.status} ${res.statusText}`);
+      console.warn(`[DiffScope] ${proxy.name} returned ${res.status}`);
     } catch(e) {
       lastErr = e;
-      console.warn(`Proxy ${i + 1} failed:`, e.message);
+      console.warn(`[DiffScope] ${proxy.name} failed:`, e.message);
     }
   }
-  throw new Error(`All ${CORS_PROXIES.length} proxies failed. Last error: ${lastErr?.message}`);
+  throw new Error(`All ${CORS_PROXIES.length} proxies failed. Last: ${lastErr?.message}`);
 }
 
 // ── URL normalisation ──────────────────────────────────────────────────────
