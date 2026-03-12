@@ -748,11 +748,6 @@ let ignoreWhitespace = false;
 // preflight OPTIONS request, which most free proxies fail. Simple GET only.
 const CORS_PROXIES = [
   {
-    name: 'allorigins/raw',
-    timeout: 30000,
-    build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  },
-  {
     name: 'allorigins/get',
     timeout: 30000,
     build: url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
