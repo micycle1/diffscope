@@ -744,27 +744,29 @@ let regexMode = false;
 let ignoreWhitespace = false;
 
 // ── CORS Proxy chain ───────────────────────────────────────────────────────
+// IMPORTANT: No custom headers on any proxy — custom headers trigger a CORS
+// preflight OPTIONS request, which most free proxies fail. Simple GET only.
 const CORS_PROXIES = [
   {
-    name: 'corsproxy.io',
-    build: url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-    // corsproxy.io requires this header for non-browser fetch to be allowed
-    headers: { 'x-requested-with': 'XMLHttpRequest' },
-  },
-  {
-    name: 'allorigins',
+    name: 'allorigins/raw',
+    timeout: 30000,
     build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    headers: {},
   },
   {
-    name: 'htmldriven',
-    build: url => `https://cors-proxy.htmldriven.com/?url=${encodeURIComponent(url)}`,
-    headers: {},
+    name: 'allorigins/get',
+    timeout: 30000,
+    build: url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    parseJson: true,
   },
   {
-    name: 'thingproxy',
-    build: url => `https://thingproxy.freeboard.io/fetch/${url}`,
-    headers: {},
+    name: 'corsproxy.io',
+    timeout: 15000,
+    build: url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  },
+  {
+    name: 'codetabs',
+    timeout: 15000,
+    build: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   },
 ];
 
@@ -776,15 +778,17 @@ async function fetchWithProxyFallback(targetUrl) {
     setStatus(`Trying proxy ${i + 1}/${CORS_PROXIES.length} (${proxy.name})…`);
     console.log(`[DiffScope] Trying proxy: ${proxy.name} →`, proxyUrl);
     try {
-      const res = await fetch(proxyUrl, {
-        signal: AbortSignal.timeout(15000),
-        headers: proxy.headers,
-      });
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(proxy.timeout) });
       if (res.ok) {
         const text = await res.text();
-        // allorigins /get wraps in JSON — /raw shouldn't, but guard anyway
-        if (text.startsWith('{') && text.includes('"contents"')) {
-          try { const j = JSON.parse(text); if (j.contents) return j.contents; } catch(e) {}
+        if (proxy.parseJson || (text.trimStart().startsWith('{') && text.includes('"contents"'))) {
+          try {
+            const j = JSON.parse(text);
+            if (typeof j.contents === 'string' && j.contents.length > 0) {
+              console.log(`[DiffScope] Success via ${proxy.name} (JSON envelope)`);
+              return j.contents;
+            }
+          } catch(e) { /* fall through to plain text */ }
         }
         if (!text || text.trim().length === 0) throw new Error('Empty response');
         console.log(`[DiffScope] Success via ${proxy.name}`);
