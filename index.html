@@ -226,6 +226,7 @@
 
     .status-ok { color: var(--accent); }
     .status-err { color: var(--del); }
+    .status-warn { color: #fbbf24; }
 
     .spinner {
       width: 12px;
@@ -631,21 +632,6 @@
 
     .diff-line.ctx .diff-line-num { }
 
-    /* ── Proxy notice ── */
-    .proxy-notice {
-      background: #1c1008;
-      border: 1px solid #92400e44;
-      border-radius: 6px;
-      padding: 10px 16px;
-      font-size: 0.75rem;
-      color: #fbbf24;
-      margin: 16px 32px 0;
-      line-height: 1.7;
-      max-width: 900px;
-    }
-
-    .proxy-notice a { color: #fcd34d; }
-
     /* Responsive */
     @media (max-width: 700px) {
       #sidebar { width: 220px; }
@@ -751,22 +737,57 @@
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
-let parsedFiles = []; // [{path, status, addCount, delCount, rawLines[]}]
+let parsedFiles = [];
 let selected = new Set();
 let filterText = '';
 let regexMode = false;
 let ignoreWhitespace = false;
 
+// ── CORS Proxy chain ───────────────────────────────────────────────────────
+// Tried in order; first success wins. Add/remove proxies as services go up/down.
+const CORS_PROXIES = [
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  url => `https://cors-anywhere.herokuapp.com/${url}`,
+  url => `https://thingproxy.freeboard.io/fetch/${url}`,
+];
+
+async function fetchWithProxyFallback(targetUrl) {
+  let lastErr;
+  for (let i = 0; i < CORS_PROXIES.length; i++) {
+    const proxyUrl = CORS_PROXIES[i](targetUrl);
+    setStatus(`Trying proxy ${i + 1}/${CORS_PROXIES.length}…`);
+    try {
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+      if (res.ok) {
+        const text = await res.text();
+        // allorigins wraps in JSON if you use /get — /raw returns plain text, but
+        // double-check we didn't accidentally get a JSON envelope from another proxy.
+        if (text.startsWith('{') && text.includes('"contents"')) {
+          try {
+            const j = JSON.parse(text);
+            if (j.contents) return j.contents;
+          } catch(e) { /* not JSON, fall through */ }
+        }
+        if (!text || text.trim().length === 0) throw new Error('Empty response');
+        return text;
+      }
+      lastErr = new Error(`HTTP ${res.status} from proxy ${i + 1}`);
+    } catch(e) {
+      lastErr = e;
+      console.warn(`Proxy ${i + 1} failed:`, e.message);
+    }
+  }
+  throw new Error(`All ${CORS_PROXIES.length} proxies failed. Last error: ${lastErr?.message}`);
+}
+
 // ── URL normalisation ──────────────────────────────────────────────────────
 function normaliseUrl(raw) {
   raw = raw.trim();
-  // Already a full URL
   if (raw.startsWith('http')) {
-    // Ensure it ends in .diff
     if (!raw.endsWith('.diff')) raw += '.diff';
     return raw;
   }
-  // Shorthand: owner/repo/ref1...ref2
   const m = raw.match(/^([^/]+\/[^/]+)\/(.+)$/);
   if (m) return `https://github.com/${m[1]}/compare/${m[2]}.diff`;
   return null;
@@ -796,23 +817,17 @@ async function loadDiff() {
   if (!url) { setStatus('Invalid URL. Try: https://github.com/owner/repo/compare/v1...v2.diff', 'err'); return; }
 
   setLoading(true);
-  setStatus(`Fetching ${url} …`);
+  setStatus(`Fetching diff…`);
   clearUI();
 
-  // We must proxy through a CORS proxy because GitHub does not send
-  // Access-Control-Allow-Origin on .diff responses.
-  const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(url)}`;
-
   try {
-    const res = await fetch(proxyUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status} – ${res.statusText}`);
-    const text = await res.text();
+    const text = await fetchWithProxyFallback(url);
     if (!text || text.trim().length === 0) throw new Error('Empty response — the diff may not exist or the versions are identical.');
     parseDiff(text);
     setStatus(`Loaded ${parsedFiles.length} file${parsedFiles.length !== 1 ? 's' : ''} from diff.`, 'ok');
   } catch(e) {
     setStatus(`Error: ${e.message}`, 'err');
-    showEmptyState(`Could not load diff — ${e.message}`, 'Check that the URL is a valid GitHub compare link. Verify the refs/tags exist.');
+    showEmptyState(`Could not load diff`, e.message);
   } finally {
     setLoading(false);
   }
@@ -823,13 +838,11 @@ function parseDiff(text) {
   const lines = text.split('\n');
   parsedFiles = [];
   let current = null;
-  let lineIdx = 0;
   let oldLine = 0, newLine = 0;
 
   for (const raw of lines) {
     if (raw.startsWith('diff --git ')) {
       if (current) parsedFiles.push(current);
-      // path: b/src/foo.cpp → src/foo.cpp
       const m = raw.match(/diff --git a\/(.*) b\/(.*)/);
       const path = m ? m[2] : raw.slice(11);
       current = { path, status: 'M', addCount: 0, delCount: 0, rawLines: [raw] };
@@ -907,7 +920,6 @@ function renderSidebar() {
     const name = document.createElement('span');
     name.className = 'file-name';
     name.title = f.path;
-    // Split dir / filename
     const slash = f.path.lastIndexOf('/');
     if (slash >= 0) {
       name.innerHTML = `<span class="path-dir">${escHtml(f.path.slice(0, slash + 1))}</span>${escHtml(f.path.slice(slash + 1))}`;
@@ -961,7 +973,6 @@ function selectNoneVisible() {
   renderSidebar(); renderDiff();
 }
 
-// keep old names so nothing else breaks
 function selectAll() { selectAllVisible(); }
 function selectNone() { selectNoneVisible(); }
 
@@ -987,10 +998,6 @@ function toggleIgnoreWhitespace() {
   renderDiff();
 }
 
-// Returns a Set of indices (into rawLines) that are whitespace-only changes.
-// Strategy: within each hunk, pair up consecutive runs of - and + lines.
-// If a - line and a + line have the same trimmed content, both are whitespace-only.
-// Unpaired deletions/additions of blank lines are also whitespace-only.
 function whitespaceOnlyIndices(rawLines) {
   const skip = new Set();
   let i = 0;
@@ -1001,9 +1008,7 @@ function whitespaceOnlyIndices(rawLines) {
 
   while (i < rawLines.length) {
     const line = rawLines[i];
-
     if (isDel(line) || isAdd(line)) {
-      // Collect del run then add run (standard unified diff order: - before +)
       const delStart = i;
       while (i < rawLines.length && isDel(rawLines[i])) i++;
       const addStart = i;
@@ -1018,16 +1023,13 @@ function whitespaceOnlyIndices(rawLines) {
         const d = j < dels.length ? dels[j] : null;
         const a = j < adds.length ? adds[j] : null;
         if (d && a) {
-          // Paired: suppress both if trimmed content is identical (pure whitespace change)
           if (d.slice(1).trim().replace(/\s+/g, ' ') === a.slice(1).trim().replace(/\s+/g, ' ')) {
             skip.add(delStart + j);
             skip.add(addStart + j);
           }
         } else if (d) {
-          // Unpaired deletion: suppress if blank
           if (isBlank(d)) skip.add(delStart + j);
         } else if (a) {
-          // Unpaired addition (the case shown in the screenshot): suppress if blank
           if (isBlank(a)) skip.add(addStart + j);
         }
       }
@@ -1038,7 +1040,6 @@ function whitespaceOnlyIndices(rawLines) {
   return skip;
 }
 
-// Strip whitespace-only changed lines from rawLines
 function filterWhitespaceLines(rawLines) {
   const skip = whitespaceOnlyIndices(rawLines);
   return rawLines.filter((_, i) => !skip.has(i));
@@ -1055,7 +1056,7 @@ function toggleRegexMode() {
   regexMode = !regexMode;
   document.getElementById('regex-toggle').classList.toggle('active', regexMode);
   document.getElementById('search-hint').innerHTML = regexMode
-    ? 'Regex: <code>\.(h|hpp)$</code> <code>^src/</code>'
+    ? 'Regex: <code>\\.(h|hpp)$</code> <code>^src/</code>'
     : 'Glob: <code>*.cpp</code> <code>src/**</code> <code>*.{h,hpp}</code>';
   filterText = document.getElementById('file-filter').value;
   updateSearchMeta();
@@ -1112,7 +1113,6 @@ function renderDiff() {
   document.getElementById('toolbar-add').textContent = `+${totalAdd}`;
   document.getElementById('toolbar-del').textContent = `-${totalDel}`;
 
-  // Show/hide whitespace-hidden count
   const wsEl = document.getElementById('toolbar-ws-hidden');
   if (ignoreWhitespace) {
     let hiddenCount = 0;
@@ -1151,7 +1151,7 @@ function buildFileBlock(f) {
   lines.className = 'diff-lines';
 
   let oldLine = 0, newLine = 0;
-  let inHeader = true; // skip the git diff header preamble
+  let inHeader = true;
 
   const linesToRender = ignoreWhitespace ? filterWhitespaceLines(f.rawLines) : f.rawLines;
   for (const raw of linesToRender) {
@@ -1224,7 +1224,6 @@ function toggleTheme() {
   try { localStorage.setItem('diffscope-theme', isDark ? 'dark' : 'light'); } catch(e) {}
 }
 
-// Restore saved theme
 (function() {
   try {
     const saved = localStorage.getItem('diffscope-theme');
@@ -1237,8 +1236,7 @@ function toggleTheme() {
   } catch(e) {}
 })();
 
-// ── Glob helpers ──────────────────────────────────────────────────────────
-// * = within segment, ** = across segments, {a,b} = OR
+// ── Glob helpers ───────────────────────────────────────────────────────────
 function globToRegex(pattern) {
   const matchFullPath = pattern.includes('/') || pattern.includes('**');
   let src = '';
@@ -1275,8 +1273,6 @@ function escapeRe(s) {
 document.getElementById('url-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') loadDiff();
 });
-
-
 
 // ── Sidebar resize ─────────────────────────────────────────────────────────
 (function() {
